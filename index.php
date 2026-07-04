@@ -13,22 +13,22 @@
 <body>
     <div id="map"></div>
 
-    <button id="btn-line-mode">✏️ Ligne</button>
+    <button id="btn-line-mode"><img src="assets/images/bus-stop.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne</button>
 
     <div id="sidebar">
         <div id="sidebar-header">
-            <h3>🚌 Lignes de bus</h3>
+            <h3><img src="assets/images/shuttle-bus.png" alt="" style="width:20px;height:20px;vertical-align:middle"> Lignes de bus</h3>
             <button id="btn-close-sidebar">✕</button>
         </div>
         <div id="bus-list"></div>
     </div>
-    <button id="btn-show-sidebar">📋 Lignes</button>
+    <button id="btn-show-sidebar"><img src="assets/images/menu.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Lignes</button>
 
     <div id="line-panel">
         <span>Cliquez sur les points dans l'ordre</span>
-        <span id="line-count">📌 0</span>
-        <button id="btn-valider-ligne">✅ Valider</button>
-        <button id="btn-annuler-ligne">❌ Annuler</button>
+        <span id="line-count"><img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> 0</span>
+        <button id="btn-valider-ligne"><img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Valider</button>
+        <button id="btn-annuler-ligne"><img src="assets/images/cancel.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Annuler</button>
     </div>
 
     <script>
@@ -119,7 +119,7 @@
             }
 
             updatePreview();
-            document.getElementById('line-count').textContent = '📌 ' + selectedPoints.length;
+            document.getElementById('line-count').innerHTML = '<img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> ' + selectedPoints.length;
         }
 
         function updatePreview() {
@@ -172,7 +172,7 @@
                         stopsList.innerHTML = l.points
                             .sort((a, b) => a.ordre - b.ordre)
                             .map((p, i) => `<div class="stop-item" data-point-id="${p.id_point}">
-                                <span class="stop-idx">${i + 1}.</span> 📍 ${p.nom_point || 'Sans nom'}
+                                <span class="stop-idx">${i + 1}.</span> <img src="assets/images/bus-stop.png" alt="" style="width:14px;height:14px;vertical-align:middle"> ${p.nom_point || 'Sans nom'}
                             </div>`)
                             .join('');
 
@@ -270,7 +270,7 @@
                     ).join('')}
                 </select>
                 <br>
-                <button id="popup-btn-save">✅ Ajouter</button>
+                <button id="popup-btn-save"><img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ajouter</button>
             `;
 
             const popup = L.popup({ closeButton: false, className: 'point-form-popup' })
@@ -309,7 +309,9 @@
         document.getElementById('btn-line-mode').onclick = function () {
             lineMode = !lineMode;
             this.classList.toggle('active', lineMode);
-            this.textContent = lineMode ? '✅ Ligne active' : '✏️ Ligne';
+            this.innerHTML = lineMode
+                ? '<img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne active'
+                : '<img src="assets/images/bus-stop.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne';
             document.getElementById('line-panel').classList.toggle('visible', lineMode);
             if (!lineMode) resetLineSelection();
         };
@@ -365,7 +367,7 @@
                 if (m) m.setIcon(L.Icon.Default.prototype);
             });
             selectedPoints = [];
-            document.getElementById('line-count').textContent = '📌 0';
+            document.getElementById('line-count').innerHTML = '<img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> 0';
             if (previewLine) { map.removeLayer(previewLine); previewLine = null; }
         }
 

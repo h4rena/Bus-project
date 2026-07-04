@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 $stmt = $pdo->query('
     SELECT l.id_ligne, l.nom_ligne, l.couleur, l.trajet_geo,
            lp.id_point, lp.ordre,
-           p.latitude, p.longitude
+           p.latitude, p.longitude, p.nom_point
     FROM lignes l
     JOIN ligne_points lp ON lp.id_ligne = l.id_ligne
     JOIN points p ON p.id_point = lp.id_point
@@ -32,6 +32,7 @@ foreach ($rows as $row) {
         'ordre' => (int)$row['ordre'],
         'latitude' => $row['latitude'],
         'longitude' => $row['longitude'],
+        'nom_point' => $row['nom_point'],
     ];
 }
 
