@@ -9,6 +9,27 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <link rel="stylesheet" href="assets/style.css" />
+    <style>
+        #btn-itineraire {
+            position: absolute; top: 130px; right: 10px; z-index: 1000;
+            padding: 8px 14px; background: white;
+            border: 2px solid rgba(0,0,0,0.2); border-radius: 4px;
+            cursor: pointer; font-weight: bold; font-size: 14px;
+        }
+        #btn-itineraire.active { background: #2196F3; color: white; border-color: #1565C0; }
+
+        #itineraire-result {
+            display: none; position: absolute; bottom: 30px;
+            left: 50%; transform: translateX(-50%); z-index: 1000;
+            background: white; padding: 12px 18px; border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3); font-size: 14px;
+            max-width: 320px;
+        }
+        #itineraire-result.visible { display: block; }
+        #itineraire-result button.close {
+            float: right; border: none; background: none; cursor: pointer; font-weight: bold;
+        }
+    </style>
 </head>
 <body>
     <div id="map"></div>
@@ -30,6 +51,9 @@
         <button id="btn-valider-ligne"><img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Valider</button>
         <button id="btn-annuler-ligne"><img src="assets/images/cancel.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Annuler</button>
     </div>
+
+    <button id="btn-itineraire">🧭 Itinéraire</button>
+    <div id="itineraire-result"></div>
 
     <script>
         const map = L.map('map').setView([-18.986021, 47.532735], 15);
@@ -253,7 +277,94 @@
             });
         }
 
+        // ===== Itinéraire (départ -> arrivée -> bus le plus proche) =====
+        let itineraireMode = false;
+        let itineraireClicks = [];
+        let itineraireMarkers = [];
+        let itineraireLayers = [];
+
+        function clearItineraire() {
+            itineraireMarkers.forEach(m => map.removeLayer(m));
+            itineraireLayers.forEach(l => map.removeLayer(l));
+            itineraireMarkers = [];
+            itineraireLayers = [];
+            itineraireClicks = [];
+            document.getElementById('itineraire-result').classList.remove('visible');
+        }
+
+        document.getElementById('btn-itineraire').onclick = function () {
+            itineraireMode = !itineraireMode;
+            this.classList.toggle('active', itineraireMode);
+            clearItineraire();
+            if (itineraireMode && lineMode) document.getElementById('btn-line-mode').click();
+        };
+
+        function handleItineraireClick(latlng) {
+            const label = itineraireClicks.length === 0 ? '🟢 Départ' : '🔴 Arrivée';
+            const color = itineraireClicks.length === 0 ? '#4CAF50' : '#f44336';
+            const marker = L.circleMarker(latlng, {
+                radius: 8, color: color, fillColor: color, fillOpacity: 1,
+            }).addTo(map).bindTooltip(label, { permanent: true, direction: 'top' });
+            itineraireMarkers.push(marker);
+            itineraireClicks.push(latlng);
+
+            if (itineraireClicks.length === 2) {
+                fetch('find_route.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        depart: { lat: itineraireClicks[0].lat, lng: itineraireClicks[0].lng },
+                        arrivee: { lat: itineraireClicks[1].lat, lng: itineraireClicks[1].lng },
+                    }),
+                })
+                    .then(res => res.json())
+                    .then(afficherResultatItineraire)
+                    .catch(err => alert('Erreur réseau : ' + err.message));
+            }
+        }
+
+        function afficherResultatItineraire(data) {
+            const box = document.getElementById('itineraire-result');
+            box.classList.add('visible');
+
+            if (!data.success) {
+                box.innerHTML = `<button class="close" onclick="clearItineraire()">✖</button>Erreur : ${data.error}`;
+                return;
+            }
+            if (!data.trouve) {
+                box.innerHTML = `<button class="close" onclick="clearItineraire()">✖</button>${data.message}<br>Arrêt départ : <b>${data.arret_depart.nom_point}</b><br>Arrêt arrivée : <b>${data.arret_arrivee.nom_point}</b>`;
+                return;
+            }
+
+            const l = data.ligne;
+            box.innerHTML = `
+                <button class="close" onclick="clearItineraire()">✖</button>
+                🚌 Prenez la ligne <b style="color:${l.couleur}">${l.nom_ligne}</b><br>
+                Montez à : <b>${data.arret_depart.nom_point}</b><br>
+                Descendez à : <b>${data.arret_arrivee.nom_point}</b>
+            `;
+
+            [data.arret_depart, data.arret_arrivee].forEach(a => {
+                const m = L.marker([parseFloat(a.latitude), parseFloat(a.longitude)], {
+                    icon: L.icon({
+                        iconUrl: 'assets/images/bus-32.png', iconSize: [32, 32],
+                        iconAnchor: [16, 16], popupAnchor: [0, -16],
+                    }),
+                }).addTo(map).bindPopup(`<b>${a.nom_point}</b>`);
+                itineraireLayers.push(m);
+            });
+
+            if (l.trajet_geo && l.trajet_geo.length > 0) {
+                const poly = L.polyline(l.trajet_geo, {
+                    color: l.couleur, weight: 6, opacity: 0.9,
+                }).addTo(map);
+                itineraireLayers.push(poly);
+                map.fitBounds(poly.getBounds(), { padding: [40, 40] });
+            }
+        }
+
         map.on('click', function (e) {
+            if (itineraireMode) { handleItineraireClick(e.latlng); return; }
             if (lineMode) return;
             if (activeRoute) { map.removeControl(activeRoute); activeRoute = null; }
 
