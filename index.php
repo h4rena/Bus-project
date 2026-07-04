@@ -69,8 +69,8 @@
         <select id="filter-ligne">
             <option value="">Tous les points</option>
             <option value="119">Ligne 119</option>
-            <option value="192A">Ligne 192A</option>
-            <option value="154">Ligne 154</option>
+            <option value="104">Ligne 104</option>
+            <option value="117">Ligne 117</option>
         </select>
     </div>
 
@@ -346,7 +346,7 @@
             if (!lineMode) resetLineSelection();
         };
 
-        const BUS_COLORS = { '119': '#e6194b', '192A': '#3cb44b', '154': '#4363d8' };
+        const BUS_COLORS = { '119': '#e6194b', '104': '#3cb44b', '117': '#4363d8' };
 
         document.getElementById('btn-valider-ligne').onclick = function () {
             if (activeRoute) { map.removeControl(activeRoute); activeRoute = null; }

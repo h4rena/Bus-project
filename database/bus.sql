@@ -32,6 +32,6 @@ ALTER TABLE lignes ADD COLUMN couleur VARCHAR(7) DEFAULT '#e6194b';
 ALTER TABLE lignes ADD COLUMN trajet_geo JSONB;
 
 
-DELETE FROM ligne_points;
-DELETE FROM lignes;
-DELETE FROM points;
+-- DELETE FROM ligne_points;
+-- DELETE FROM lignes;
+-- DELETE FROM points;
