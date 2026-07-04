@@ -52,7 +52,7 @@
         <button id="btn-annuler-ligne"><img src="assets/images/cancel.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Annuler</button>
     </div>
 
-    <button id="btn-itineraire">🧭 Itinéraire</button>
+    <button id="btn-itineraire"><img src="assets/images/tool.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Itinéraire</button>
     <div id="itineraire-result"></div>
 
     <script>
