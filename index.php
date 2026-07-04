@@ -8,77 +8,27 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
-    <style>
-        html, body { height: 100%; margin: 0; padding: 0; }
-        #map { height: 100%; width: 100%; }
-
-        #btn-line-mode {
-            position: absolute; top: 80px; right: 10px; z-index: 1000;
-            padding: 8px 14px; background: white;
-            border: 2px solid rgba(0,0,0,0.2); border-radius: 4px;
-            cursor: pointer; font-weight: bold; font-size: 14px;
-        }
-        #btn-line-mode.active {
-            background: #4CAF50; color: white; border-color: #388E3C;
-        }
-
-        #line-panel {
-            display: none; position: absolute; bottom: 30px;
-            left: 50%; transform: translateX(-50%); z-index: 1000;
-            background: white; padding: 10px 18px; border-radius: 6px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3); font-size: 14px;
-            text-align: center; gap: 12px; align-items: center;
-        }
-        #line-panel.visible { display: flex; }
-        #line-panel button {
-            padding: 6px 14px; border: none; border-radius: 4px;
-            cursor: pointer; font-weight: bold;
-        }
-        #btn-valider-ligne { background: #4CAF50; color: white; }
-        #btn-annuler-ligne { background: #f44336; color: white; }
-        #line-count { font-weight: bold; margin: 0 8px; }
-
-        #filter-panel {
-            position: absolute; top: 80px; left: 10px; z-index: 1000;
-            background: white; padding: 8px 12px; border-radius: 4px;
-            border: 2px solid rgba(0,0,0,0.2); font-size: 14px;
-        }
-        #filter-panel select {
-            padding: 4px; border-radius: 3px; border: 1px solid #ccc;
-        }
-
-        .leaflet-popup-content input,
-        .leaflet-popup-content select {
-            width: 100%; padding: 4px; margin: 4px 0;
-            border: 1px solid #ccc; border-radius: 3px;
-        }
-        .leaflet-popup-content button {
-            padding: 6px 16px; background: #4CAF50; color: white;
-            border: none; border-radius: 4px; cursor: pointer;
-            font-weight: bold; margin-top: 6px;
-        }
-    </style>
+    <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
     <div id="map"></div>
 
-    <button id="btn-line-mode">✏️ Ligne</button>
+    <button id="btn-line-mode"><img src="assets/images/bus-stop.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne</button>
 
-    <div id="filter-panel">
-        <label>Filtrer : </label>
-        <select id="filter-ligne">
-            <option value="">Tous les points</option>
-            <option value="119">Ligne 119</option>
-            <option value="104">Ligne 104</option>
-            <option value="117">Ligne 117</option>
-        </select>
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h3><img src="assets/images/shuttle-bus.png" alt="" style="width:20px;height:20px;vertical-align:middle"> Lignes de bus</h3>
+            <button id="btn-close-sidebar">✕</button>
+        </div>
+        <div id="bus-list"></div>
     </div>
+    <button id="btn-show-sidebar"><img src="assets/images/menu.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Lignes</button>
 
     <div id="line-panel">
         <span>Cliquez sur les points dans l'ordre</span>
-        <span id="line-count">📌 0</span>
-        <button id="btn-valider-ligne">✅ Valider</button>
-        <button id="btn-annuler-ligne">❌ Annuler</button>
+        <span id="line-count"><img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> 0</span>
+        <button id="btn-valider-ligne"><img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Valider</button>
+        <button id="btn-annuler-ligne"><img src="assets/images/cancel.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Annuler</button>
     </div>
 
     <script>
@@ -103,6 +53,9 @@
         let activeRoute = null;
         let pointTypes = [];
         let currentPointPopup = null;
+        let activeBusLine = null;
+        let busPolylineLayer = null;
+        let sidebarVisible = true;
 
         function loadTypes() {
             fetch('get_types.php')
@@ -116,6 +69,7 @@
                 .then(data => {
                     if (!data.success) return;
                     data.points.forEach(p => addMarker(p));
+                    showAllMarkers();
                 });
         }
 
@@ -134,7 +88,7 @@
                         iconAnchor: [16, 16],
                         popupAnchor: [0, -16],
                     }),
-                }).addTo(map);
+                });
             } else {
                 marker = L.marker([lat, lng]).addTo(map);
             }
@@ -165,7 +119,7 @@
             }
 
             updatePreview();
-            document.getElementById('line-count').textContent = '📌 ' + selectedPoints.length;
+            document.getElementById('line-count').innerHTML = '<img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> ' + selectedPoints.length;
         }
 
         function updatePreview() {
@@ -185,105 +139,119 @@
         }
 
         function loadLignes() {
+            // Juste pour alimenter la sidebar via renderBusList()
+            renderBusList();
+        }
+
+        function showAllMarkers() {
+            Object.values(markers).forEach(m => map.addLayer(m));
+        }
+
+        function renderBusList() {
             fetch('get_lignes.php')
                 .then(res => res.json())
                 .then(data => {
-                    linePolylines.forEach(p => map.removeLayer(p));
-                    linePolylines = [];
-
+                    const container = document.getElementById('bus-list');
+                    container.innerHTML = '';
                     data.forEach(l => {
-                        const color = l.couleur || LINE_COLORS[l.id_ligne % LINE_COLORS.length];
-                        let latlngs;
+                        const card = document.createElement('div');
+                        card.className = 'bus-card';
+                        card.dataset.id = l.id_ligne;
 
-                        if (l.trajet_geo && l.trajet_geo.length > 0) {
-                            latlngs = l.trajet_geo;
-                        } else {
-                            latlngs = l.points
-                                .sort((a, b) => a.ordre - b.ordre)
-                                .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
-                        }
+                        const header = document.createElement('div');
+                        header.className = 'bus-header';
+                        header.innerHTML = `
+                            <span class="bus-dot" style="background:${l.couleur || 'gray'}"></span>
+                            <strong>Ligne ${l.nom_ligne}</strong>
+                            <span class="bus-count">${l.points.length} arrêts</span>
+                        `;
 
-                        const polyline = L.polyline(latlngs, {
-                            color: color, weight: 4, opacity: 0.8,
-                        }).addTo(map);
+                        const stopsList = document.createElement('div');
+                        stopsList.className = 'bus-stops';
+                        stopsList.style.display = 'none';
+                        stopsList.innerHTML = l.points
+                            .sort((a, b) => a.ordre - b.ordre)
+                            .map((p, i) => `<div class="stop-item" data-point-id="${p.id_point}">
+                                <span class="stop-idx">${i + 1}.</span> <img src="assets/images/bus-stop.png" alt="" style="width:14px;height:14px;vertical-align:middle"> ${p.nom_point || 'Sans nom'}
+                            </div>`)
+                            .join('');
 
-                        polyline.bindPopup(`<b>${l.nom_ligne || 'Sans nom'}</b>`);
+                        header.onclick = () => toggleBusLine(l, card, stopsList);
 
-                        polyline.on('click', function () {
-                            if (l.points.length < 2) return;
-                            if (activeRoute) map.removeControl(activeRoute);
-
-                            const first = l.points[0];
-                            const last = l.points[l.points.length - 1];
-
-                            activeRoute = L.Routing.control({
-                                waypoints: [
-                                    L.latLng(parseFloat(first.latitude), parseFloat(first.longitude)),
-                                    L.latLng(parseFloat(last.latitude), parseFloat(last.longitude)),
-                                ],
-                                router: L.Routing.osrmv1({
-                                    serviceUrl: 'https://router.project-osrm.org/route/v1'
-                                }),
-                                lineOptions: { styles: [{ color: '#ff0000', opacity: 0.7, weight: 5 }] },
-                                show: true, addWaypoints: false,
-                                fitSelectedRoutes: true, showAlternatives: false,
-                            }).addTo(map);
-                        });
-
-                        linePolylines.push(polyline);
+                        card.appendChild(header);
+                        card.appendChild(stopsList);
+                        container.appendChild(card);
                     });
-
-                    updateFilter();
                 });
         }
 
-        function updateFilter() {
-            const selected = document.getElementById('filter-ligne').value;
+        function toggleBusLine(ligne, card, stopsList) {
+            const isSame = activeBusLine === ligne.id_ligne;
 
-            Object.keys(markers).forEach(id => {
-                const marker = markers[id];
-                if (!selected) {
-                    map.addLayer(marker);
-                    return;
-                }
-                map.removeLayer(marker);
+            // Reset toutes les cartes
+            document.querySelectorAll('.bus-card').forEach(c => {
+                c.querySelector('.bus-stops').style.display = 'none';
+                c.classList.remove('active');
             });
 
-            linePolylines.forEach(poly => map.removeLayer(poly));
+            // Cacher la polyline de bus active
+            if (busPolylineLayer) { map.removeLayer(busPolylineLayer); busPolylineLayer = null; }
+            if (activeRoute) { map.removeControl(activeRoute); activeRoute = null; }
 
-            fetch('get_lignes.php')
-                .then(res => res.json())
-                .then(data => {
-                    data.forEach(l => {
-                        if (selected && l.nom_ligne !== selected) return;
+            // Réafficher tous les marqueurs
+            showAllMarkers();
 
-                        const color = l.couleur || LINE_COLORS[l.id_ligne % LINE_COLORS.length];
-                        let latlngs;
+            if (isSame) {
+                activeBusLine = null;
+                return;
+            }
 
-                        if (l.trajet_geo && l.trajet_geo.length > 0) {
-                            latlngs = l.trajet_geo;
-                        } else {
-                            latlngs = l.points
-                                .sort((a, b) => a.ordre - b.ordre)
-                                .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
-                        }
+            activeBusLine = ligne.id_ligne;
+            card.classList.add('active');
+            stopsList.style.display = 'block';
 
-                        const polyline = L.polyline(latlngs, {
-                            color: color, weight: 4, opacity: 0.8,
-                        }).addTo(map);
+            // Masquer les marqueurs qui ne sont pas dans cette ligne
+            const linePointIds = new Set(ligne.points.map(p => p.id_point));
+            Object.keys(markers).forEach(id => {
+                if (!linePointIds.has(parseInt(id))) {
+                    map.removeLayer(markers[id]);
+                }
+            });
 
-                        polyline.bindPopup(`<b>${l.nom_ligne || 'Sans nom'}</b>`);
-                        linePolylines.push(polyline);
+            // Afficher la polyline (trajet OSRM si dispo)
+            let latlngs;
+            if (ligne.trajet_geo && ligne.trajet_geo.length > 0) {
+                latlngs = ligne.trajet_geo;
+            } else {
+                latlngs = ligne.points
+                    .sort((a, b) => a.ordre - b.ordre)
+                    .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
+            }
 
-                        l.points.forEach(p => {
-                            const marker = markers[p.id_point];
-                            if (marker) map.addLayer(marker);
-                        });
-                    });
-                });
+            busPolylineLayer = L.polyline(latlngs, {
+                color: ligne.couleur || '#e6194b',
+                weight: 4, opacity: 0.85,
+            }).addTo(map);
+
+            busPolylineLayer.bindPopup(`<b>${ligne.nom_ligne || 'Sans nom'}</b>`);
+
+            // Zoom sur la ligne
+            const bounds = L.latLngBounds(latlngs);
+            map.fitBounds(bounds, { padding: [60, 60] });
+
+            // Gestion clic sur arrêts dans la liste
+            stopsList.querySelectorAll('.stop-item').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = parseInt(el.dataset.pointId);
+                    const marker = markers[id];
+                    if (marker) {
+                        map.setView(marker.getLatLng(), 17);
+                        marker.openPopup();
+                    }
+                };
+            });
         }
-
-        document.getElementById('filter-ligne').onchange = updateFilter;
 
         map.on('click', function (e) {
             if (lineMode) return;
@@ -302,7 +270,7 @@
                     ).join('')}
                 </select>
                 <br>
-                <button id="popup-btn-save">✅ Ajouter</button>
+                <button id="popup-btn-save"><img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ajouter</button>
             `;
 
             const popup = L.popup({ closeButton: false, className: 'point-form-popup' })
@@ -341,7 +309,9 @@
         document.getElementById('btn-line-mode').onclick = function () {
             lineMode = !lineMode;
             this.classList.toggle('active', lineMode);
-            this.textContent = lineMode ? '✅ Ligne active' : '✏️ Ligne';
+            this.innerHTML = lineMode
+                ? '<img src="assets/images/check.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne active'
+                : '<img src="assets/images/bus-stop.png" alt="" style="width:16px;height:16px;vertical-align:middle"> Ligne';
             document.getElementById('line-panel').classList.toggle('visible', lineMode);
             if (!lineMode) resetLineSelection();
         };
@@ -374,9 +344,7 @@
                     if (data.success) {
                         resetLineSelection();
                         document.getElementById('btn-line-mode').click();
-                        loadLignes();
-                        // Mettre à jour le filtre avec un petit délai pour OSRM
-                        setTimeout(updateFilter, 2000);
+                        renderBusList();
                     } else {
                         alert('Erreur : ' + data.error);
                     }
@@ -386,13 +354,20 @@
 
         document.getElementById('btn-annuler-ligne').onclick = resetLineSelection;
 
+        document.getElementById('btn-close-sidebar').onclick = function () {
+            document.getElementById('sidebar').classList.add('hidden');
+        };
+        document.getElementById('btn-show-sidebar').onclick = function () {
+            document.getElementById('sidebar').classList.remove('hidden');
+        };
+
         function resetLineSelection() {
             selectedPoints.forEach(id => {
                 const m = markers[id];
                 if (m) m.setIcon(L.Icon.Default.prototype);
             });
             selectedPoints = [];
-            document.getElementById('line-count').textContent = '📌 0';
+            document.getElementById('line-count').innerHTML = '<img src="assets/images/pin.png" alt="" style="width:16px;height:16px;vertical-align:middle"> 0';
             if (previewLine) { map.removeLayer(previewLine); previewLine = null; }
         }
 
