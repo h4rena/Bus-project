@@ -3,7 +3,7 @@ $host = 'localhost';
 $port = '5432';
 $dbname = 'webmapping_db';
 $user = 'postgres';
-$password = '3958';
+$password = 'POSTGRES';
 
 try {
     $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $user, $password);
