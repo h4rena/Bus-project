@@ -38,14 +38,52 @@
         #btn-annuler-ligne { background: #f44336; color: white; }
         #line-count { font-weight: bold; margin: 0 8px; }
 
-        #filter-panel {
-            position: absolute; top: 80px; left: 10px; z-index: 1000;
-            background: white; padding: 8px 12px; border-radius: 4px;
-            border: 2px solid rgba(0,0,0,0.2); font-size: 14px;
+        #sidebar {
+            position: absolute; top: 10px; left: 10px; z-index: 1000;
+            width: 280px; max-height: 85vh; overflow-y: auto;
+            background: white; border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3); font-size: 13px;
+            transition: transform 0.3s;
         }
-        #filter-panel select {
-            padding: 4px; border-radius: 3px; border: 1px solid #ccc;
+        #sidebar.hidden { transform: translateX(-300px); }
+        #sidebar-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 14px; border-bottom: 1px solid #eee;
+            position: sticky; top: 0; background: white; z-index: 1;
+            border-radius: 6px 6px 0 0;
         }
+        #sidebar-header h3 { margin: 0; font-size: 15px; }
+        #btn-close-sidebar {
+            background: none; border: none; font-size: 18px;
+            cursor: pointer; color: #666; padding: 0 4px; line-height: 1;
+        }
+        #btn-close-sidebar:hover { color: #333; }
+        #btn-show-sidebar {
+            display: none; position: absolute; top: 10px; left: 10px;
+            z-index: 1000; background: white; border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 14px;
+        }
+        #sidebar.hidden ~ #btn-show-sidebar { display: block; }
+
+        .bus-card {
+            border-bottom: 1px solid #eee; transition: all 0.2s;
+        }
+        .bus-card:last-child { border-bottom: none; }
+        .bus-card.active { background: #f5f9ff; }
+        .bus-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 14px; cursor: pointer;
+        }
+        .bus-header:hover { background: #f5f5f5; }
+        .bus-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+        .bus-count { margin-left: auto; color: #999; font-size: 11px; }
+        .bus-stops { padding: 0 14px 10px 36px; }
+        .stop-item {
+            padding: 5px 8px; cursor: pointer; border-radius: 4px;
+            font-size: 12px; display: flex; align-items: center; gap: 6px;
+        }
+        .stop-item:hover { background: #e3f2fd; }
+        .stop-idx { color: #999; font-size: 11px; min-width: 18px; }
 
         .leaflet-popup-content input,
         .leaflet-popup-content select {
@@ -64,15 +102,14 @@
 
     <button id="btn-line-mode">✏️ Ligne</button>
 
-    <div id="filter-panel">
-        <label>Filtrer : </label>
-        <select id="filter-ligne">
-            <option value="">Tous les points</option>
-            <option value="119">Ligne 119</option>
-            <option value="104">Ligne 104</option>
-            <option value="117">Ligne 117</option>
-        </select>
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h3>🚌 Lignes de bus</h3>
+            <button id="btn-close-sidebar">✕</button>
+        </div>
+        <div id="bus-list"></div>
     </div>
+    <button id="btn-show-sidebar">📋 Lignes</button>
 
     <div id="line-panel">
         <span>Cliquez sur les points dans l'ordre</span>
@@ -103,6 +140,9 @@
         let activeRoute = null;
         let pointTypes = [];
         let currentPointPopup = null;
+        let activeBusLine = null;
+        let busPolylineLayer = null;
+        let sidebarVisible = true;
 
         function loadTypes() {
             fetch('get_types.php')
@@ -116,6 +156,7 @@
                 .then(data => {
                     if (!data.success) return;
                     data.points.forEach(p => addMarker(p));
+                    showAllMarkers();
                 });
         }
 
@@ -134,7 +175,7 @@
                         iconAnchor: [16, 16],
                         popupAnchor: [0, -16],
                     }),
-                }).addTo(map);
+                });
             } else {
                 marker = L.marker([lat, lng]).addTo(map);
             }
@@ -185,105 +226,119 @@
         }
 
         function loadLignes() {
+            // Juste pour alimenter la sidebar via renderBusList()
+            renderBusList();
+        }
+
+        function showAllMarkers() {
+            Object.values(markers).forEach(m => map.addLayer(m));
+        }
+
+        function renderBusList() {
             fetch('get_lignes.php')
                 .then(res => res.json())
                 .then(data => {
-                    linePolylines.forEach(p => map.removeLayer(p));
-                    linePolylines = [];
-
+                    const container = document.getElementById('bus-list');
+                    container.innerHTML = '';
                     data.forEach(l => {
-                        const color = l.couleur || LINE_COLORS[l.id_ligne % LINE_COLORS.length];
-                        let latlngs;
+                        const card = document.createElement('div');
+                        card.className = 'bus-card';
+                        card.dataset.id = l.id_ligne;
 
-                        if (l.trajet_geo && l.trajet_geo.length > 0) {
-                            latlngs = l.trajet_geo;
-                        } else {
-                            latlngs = l.points
-                                .sort((a, b) => a.ordre - b.ordre)
-                                .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
-                        }
+                        const header = document.createElement('div');
+                        header.className = 'bus-header';
+                        header.innerHTML = `
+                            <span class="bus-dot" style="background:${l.couleur || 'gray'}"></span>
+                            <strong>Ligne ${l.nom_ligne}</strong>
+                            <span class="bus-count">${l.points.length} arrêts</span>
+                        `;
 
-                        const polyline = L.polyline(latlngs, {
-                            color: color, weight: 4, opacity: 0.8,
-                        }).addTo(map);
+                        const stopsList = document.createElement('div');
+                        stopsList.className = 'bus-stops';
+                        stopsList.style.display = 'none';
+                        stopsList.innerHTML = l.points
+                            .sort((a, b) => a.ordre - b.ordre)
+                            .map((p, i) => `<div class="stop-item" data-point-id="${p.id_point}">
+                                <span class="stop-idx">${i + 1}.</span> 📍 ${p.nom_point || 'Sans nom'}
+                            </div>`)
+                            .join('');
 
-                        polyline.bindPopup(`<b>${l.nom_ligne || 'Sans nom'}</b>`);
+                        header.onclick = () => toggleBusLine(l, card, stopsList);
 
-                        polyline.on('click', function () {
-                            if (l.points.length < 2) return;
-                            if (activeRoute) map.removeControl(activeRoute);
-
-                            const first = l.points[0];
-                            const last = l.points[l.points.length - 1];
-
-                            activeRoute = L.Routing.control({
-                                waypoints: [
-                                    L.latLng(parseFloat(first.latitude), parseFloat(first.longitude)),
-                                    L.latLng(parseFloat(last.latitude), parseFloat(last.longitude)),
-                                ],
-                                router: L.Routing.osrmv1({
-                                    serviceUrl: 'https://router.project-osrm.org/route/v1'
-                                }),
-                                lineOptions: { styles: [{ color: '#ff0000', opacity: 0.7, weight: 5 }] },
-                                show: true, addWaypoints: false,
-                                fitSelectedRoutes: true, showAlternatives: false,
-                            }).addTo(map);
-                        });
-
-                        linePolylines.push(polyline);
+                        card.appendChild(header);
+                        card.appendChild(stopsList);
+                        container.appendChild(card);
                     });
-
-                    updateFilter();
                 });
         }
 
-        function updateFilter() {
-            const selected = document.getElementById('filter-ligne').value;
+        function toggleBusLine(ligne, card, stopsList) {
+            const isSame = activeBusLine === ligne.id_ligne;
 
-            Object.keys(markers).forEach(id => {
-                const marker = markers[id];
-                if (!selected) {
-                    map.addLayer(marker);
-                    return;
-                }
-                map.removeLayer(marker);
+            // Reset toutes les cartes
+            document.querySelectorAll('.bus-card').forEach(c => {
+                c.querySelector('.bus-stops').style.display = 'none';
+                c.classList.remove('active');
             });
 
-            linePolylines.forEach(poly => map.removeLayer(poly));
+            // Cacher la polyline de bus active
+            if (busPolylineLayer) { map.removeLayer(busPolylineLayer); busPolylineLayer = null; }
+            if (activeRoute) { map.removeControl(activeRoute); activeRoute = null; }
 
-            fetch('get_lignes.php')
-                .then(res => res.json())
-                .then(data => {
-                    data.forEach(l => {
-                        if (selected && l.nom_ligne !== selected) return;
+            // Réafficher tous les marqueurs
+            showAllMarkers();
 
-                        const color = l.couleur || LINE_COLORS[l.id_ligne % LINE_COLORS.length];
-                        let latlngs;
+            if (isSame) {
+                activeBusLine = null;
+                return;
+            }
 
-                        if (l.trajet_geo && l.trajet_geo.length > 0) {
-                            latlngs = l.trajet_geo;
-                        } else {
-                            latlngs = l.points
-                                .sort((a, b) => a.ordre - b.ordre)
-                                .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
-                        }
+            activeBusLine = ligne.id_ligne;
+            card.classList.add('active');
+            stopsList.style.display = 'block';
 
-                        const polyline = L.polyline(latlngs, {
-                            color: color, weight: 4, opacity: 0.8,
-                        }).addTo(map);
+            // Masquer les marqueurs qui ne sont pas dans cette ligne
+            const linePointIds = new Set(ligne.points.map(p => p.id_point));
+            Object.keys(markers).forEach(id => {
+                if (!linePointIds.has(parseInt(id))) {
+                    map.removeLayer(markers[id]);
+                }
+            });
 
-                        polyline.bindPopup(`<b>${l.nom_ligne || 'Sans nom'}</b>`);
-                        linePolylines.push(polyline);
+            // Afficher la polyline (trajet OSRM si dispo)
+            let latlngs;
+            if (ligne.trajet_geo && ligne.trajet_geo.length > 0) {
+                latlngs = ligne.trajet_geo;
+            } else {
+                latlngs = ligne.points
+                    .sort((a, b) => a.ordre - b.ordre)
+                    .map(p => [parseFloat(p.latitude), parseFloat(p.longitude)]);
+            }
 
-                        l.points.forEach(p => {
-                            const marker = markers[p.id_point];
-                            if (marker) map.addLayer(marker);
-                        });
-                    });
-                });
+            busPolylineLayer = L.polyline(latlngs, {
+                color: ligne.couleur || '#e6194b',
+                weight: 4, opacity: 0.85,
+            }).addTo(map);
+
+            busPolylineLayer.bindPopup(`<b>${ligne.nom_ligne || 'Sans nom'}</b>`);
+
+            // Zoom sur la ligne
+            const bounds = L.latLngBounds(latlngs);
+            map.fitBounds(bounds, { padding: [60, 60] });
+
+            // Gestion clic sur arrêts dans la liste
+            stopsList.querySelectorAll('.stop-item').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = parseInt(el.dataset.pointId);
+                    const marker = markers[id];
+                    if (marker) {
+                        map.setView(marker.getLatLng(), 17);
+                        marker.openPopup();
+                    }
+                };
+            });
         }
-
-        document.getElementById('filter-ligne').onchange = updateFilter;
 
         map.on('click', function (e) {
             if (lineMode) return;
@@ -374,9 +429,7 @@
                     if (data.success) {
                         resetLineSelection();
                         document.getElementById('btn-line-mode').click();
-                        loadLignes();
-                        // Mettre à jour le filtre avec un petit délai pour OSRM
-                        setTimeout(updateFilter, 2000);
+                        renderBusList();
                     } else {
                         alert('Erreur : ' + data.error);
                     }
@@ -385,6 +438,13 @@
         };
 
         document.getElementById('btn-annuler-ligne').onclick = resetLineSelection;
+
+        document.getElementById('btn-close-sidebar').onclick = function () {
+            document.getElementById('sidebar').classList.add('hidden');
+        };
+        document.getElementById('btn-show-sidebar').onclick = function () {
+            document.getElementById('sidebar').classList.remove('hidden');
+        };
 
         function resetLineSelection() {
             selectedPoints.forEach(id => {
